@@ -393,5 +393,5 @@ def submit():
             return redirect("/")
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
     uvicorn.run("main:app", host = "0.0.0.0", port = 5050, log_level = "info", reload = True)
