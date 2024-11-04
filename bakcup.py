@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, send_file, redirect, url_for, session
 import uvicorn
 from docx import Document
 import os
@@ -6,7 +6,6 @@ import json
 import re
 import threading
 import time
-import win32com.client as win32
 from flask_session import Session
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
@@ -26,8 +25,8 @@ app.config['CORS_HEADER'] = 'application/json'
 
 def download_and_redirect1(file_path):
     time.sleep(10)
-    os.remove(file_path)
-    os.remove(fr"uploads/{file_path.split('filled_')[1]}")
+    # os.remove(file_path)
+    # os.remove(fr"uploads/{file_path.split('filled_')[1]}")
     return redirect('/')
 
 def download_and_redirect2(file_path):
@@ -176,7 +175,7 @@ def generate_html_form(words):
 
             inputtype = 'file'
         else:
-            new_word = word
+            new_word = word.replace('_', ' ')
             inputtype = 'text'
 
         if inputtype == 'textarea':
@@ -297,7 +296,11 @@ def process_api():
 
         for f in file:
             filename = secure_filename(f.filename)
-            f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            print(allowedFile(filename))
+            if allowedFile(filename):
+                f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            else:
+                return jsonify({'message': 'File type not allowed'}), 400
 
         with open('filename.json') as fn:
             info = json.load(fn)
@@ -390,4 +393,4 @@ def submit():
 
 if __name__ == '__main__':
     app.run(debug=False)
-    uvicorn.run("main:app", host = "172.0.0.1", port = 5050, log_level = "info", reload = True)
+    uvicorn.run("main:app", host = "0.0.0.0", port = 5050, log_level = "info", reload = True)
