@@ -1,6 +1,5 @@
-from flask import Flask, render_template, request, send_file, redirect, url_for, session
+from flask import Flask, render_template, request, send_file, redirect, url_for, session, jsonify
 import uvicorn
-from docx import Document
 import os
 import json
 import re
@@ -12,6 +11,15 @@ from flask_cors import CORS
 import image
 from docx.shared import Cm, Mm
 from docxtpl import DocxTemplate, InlineImage
+from time import gmtime, strftime
+import urllib.request
+import string, random, requests, io, shutil
+from docx2pdf import convert
+from spire.doc import *
+from spire.doc.common import *
+import fitz
+import aspose.words as aw
+import pypandoc
 
 ALLOWED_EXTENSIONS = set(['xls', 'csv', 'png', 'jpeg', 'jpg'])
 UPLOAD_FOLDER = os.path.abspath(os.path.join(os.path.dirname(__file__), 'Downloads'))
@@ -24,14 +32,28 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1000 * 1000  # 500 MB
 app.config['CORS_HEADER'] = 'application/json'
 
 def download_and_redirect1(file_path):
-    time.sleep(10)
-    # os.remove(file_path)
-    # os.remove(fr"uploads/{file_path.split('filled_')[1]}")
+    time.sleep(30)
+    os.remove(file_path)
+    os.remove(fr"uploads/{file_path.split('filled_')[1]}")
     return redirect('/')
 
 def download_and_redirect2(file_path):
     time.sleep(10)
     return redirect('/')
+
+def download_and_redirect_api(file_path, folder):
+    time.sleep(10)
+    os.remove(file_path)
+    
+    if os.path.exists(folder):
+        shutil.rmtree(folder)
+        
+    return 'success'
+
+def download_and_redirect_pdf(pdf):
+    time.sleep(10)
+    os.remove(pdf)
+    return 'success'
 
 def extract_words(text):
     pattern = r'\{\{(.*?)\}\}'
@@ -175,7 +197,7 @@ def generate_html_form(words):
 
             inputtype = 'file'
         else:
-            new_word = word.replace('_', ' ')
+            new_word = word
             inputtype = 'text'
 
         if inputtype == 'textarea':
@@ -290,45 +312,66 @@ def process():
         
 @app.route('/generate-form-file',  methods=['POST'])
 def process_api():
+    from docx import Document
+    
     if request.method == 'POST':
-        file = request.files.getlist('files')
-        filename = ""
+        if request.form['key'] == 'vF6DfT5u0VeA8WEZv7RlMDwumlIHOK':
+            file = request.files.getlist('files')
+            filename = ""
 
-        for f in file:
-            filename = secure_filename(f.filename)
-            print(allowedFile(filename))
-            if allowedFile(filename):
+            for f in file:
+                filename = request.form['filename']
                 f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            else:
-                return jsonify({'message': 'File type not allowed'}), 400
+            
+            name = filename
+            filename = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            doc = Document(fr'{filename}')
+            words = set()
 
-        with open('filename.json') as fn:
-            info = json.load(fn)
+            for paragraph in doc.paragraphs:
+                for word in extract_words(paragraph.text):
+                    words.add(word)
+            
+                        
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for word in extract_words(paragraph.text):
+                                words.add(word)
+            
+            section = doc.sections[0]
+            header = section.header
+            footer = section.footer
 
-        if info["file"] == "":
-            info["file"] = filename 
-
-            os.remove(r'filename.json')
-            with open('filename.json', 'w') as fl:
-                json.dump(info, fl)
-
-        doc = Document(fr'{filename}')
-        words = set()
-        for paragraph in doc.paragraphs:
-            for word in extract_words(paragraph.text):
-                words.add(word)
-        
+            for paragraphhd in header.paragraphs:
+                for word in extract_words(paragraphhd.text):
+                    words.add(word)
                     
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        for word in extract_words(paragraph.text):
-                            words.add(word)
-        
-        return jsonify({"documentfield": list(words), "status": "success"})
+            for tablehd in header.tables:
+                for row in tablehd.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for word in extract_words(paragraph.text):
+                                words.add(word)
+
+            for paragraphft in footer.paragraphs:
+                for word in extract_words(paragraphft.text):
+                    words.add(word)
+                    
+            for tableft in header.tables:
+                for row in tableft.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for word in extract_words(paragraph.text):
+                                words.add(word)
+
+            return {"documentfield": list(words), "filename": name, "status": "success"}
+        else:
+            return {"status": "Credential failed"}
     else:
         return jsonify({"status": "Upload API GET Request Running"})
+    
 
 @app.route('/submit', methods=['POST'])
 def submit():
@@ -355,7 +398,7 @@ def submit():
 
             for key, value in request.form.items():
                 data[key] = value
-
+            print(data)
             name = f"filled_{filename.split('/')[-1]}"
             doc.render(data)
             doc.save(r'filled_'+filename.split('/')[-1])
@@ -391,6 +434,109 @@ def submit():
         except:
             return redirect("/")
 
+@app.route('/submit-api', methods=['POST'])
+def submitapi():
+    if request.method == 'POST':
+        if request.form['key'] == 'vF6DfT5u0VeA8WEZv7RlMDwumlIHOK':
+            filename    = request.form['filename']
+            data        = json.loads(request.form['jsondata'])
+            folder      = request.form['folder']
+
+            file = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            doc = DocxTemplate(file)
+            newdata = {}
+
+            for key, value in data.items():
+                if "file" in key or "image" in key:
+                    newval  = value.split('❧')
+                    newdata = {key: InlineImage(doc, os.path.join(folder, newval[0]), width=Mm(int(newval[1])), height=Mm(int(newval[2])))}
+
+            for key, value in data.items():
+                if "file" in key or "image" in key:
+                    pass
+                else:
+                    newdata[key] = value
+            
+            name = f"filled_{folder}.docx"
+            document = doc.render(newdata)
+            doc.save(r'filled_'+folder+'.docx')
+            
+            # documentpdf = Document()
+            # documentpdf.LoadFromFile(name)
+            # documentpdf.Watermark = None
+            # documentpdf.SaveToFile(folder+".pdf", FileFormat.PDF)
+            # documentpdf.Close()
+
+            threading.Thread(target=download_and_redirect_api, args=(name, folder,)).start()
+            return send_file(name, as_attachment=True)
+            #return {"jsondata": data, "filename": filename, "status": "success"}
+        else:
+            return {"status": "Credential failed"}
+    else:
+            return jsonify({"status": "Upload API GET Request Running"})
+        
+@app.route('/upload-image-api',  methods=['POST'])
+def uploadimage_api():
+    if request.method == 'POST':
+        if request.form['key'] == 'vF6DfT5u0VeA8WEZv7RlMDwumlIHOK':
+            file = request.files.getlist('files')
+            os.makedirs(request.form['folder'], exist_ok=True) 
+
+            for f in file:
+                filename = request.form['filename']
+                f.save(os.path.join(request.form['folder'], filename))
+            
+            return {"status": "success"}
+        else:
+            return {"status": "Credential failed"}
+    else:
+        return jsonify({"status": "Upload API GET Request Running"})
+    
+    
+@app.route('/download-pdf',  methods=['POST'])
+def downloadpdf():
+    if request.method == 'POST':
+        if request.form['key'] == 'vF6DfT5u0VeA8WEZv7RlMDwumlIHOK':
+            
+            name = f'filled_'+request.form['pdfname']+'.pdf'
+            word = f'filled_'+request.form['pdfname']+'.word'
+            
+            docpdf = aw.Document(word)
+            opt = aw.saving.PdfSaveOptions()
+            opt.compliance = aw.saving.PdfCompliance.PDF_UA1 
+            docpdf.save(name)
+            
+            # input_pdf = request.form['pdfname']
+            # output_pdf = 'filled_'+request.form['pdfname']
+            # text_to_remove = "Evaluation Warning: The document was created with Spire.Doc for Python."  # Modify with the specific text you want to remove
+
+            # remove_text_from_pdf(input_pdf, output_pdf, text_to_remove)
+
+            threading.Thread(target=download_and_redirect_pdf, args=(name,)).start()
+            return send_file(name, as_attachment=True)
+        else:
+            return {"status": "Credential failed"}
+    else:
+        return jsonify({"status": "Upload API GET Request Running"})
+    
+
+def remove_text_from_pdf(input_pdf, output_pdf, text_to_remove):
+    doc = fitz.open(input_pdf)
+    
+    for page_num in range(doc.page_count):
+        page = doc.load_page(page_num)
+        
+        blocks = page.get_text("dict")["blocks"]
+        
+        for block in blocks:
+            if block["type"] == 0:  # 0 represents text block type
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        if text_to_remove in span["text"]:
+                            rect = fitz.Rect(span["bbox"])
+                            page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
+    doc.save(output_pdf)
+
 if __name__ == '__main__':
-    app.run(debug=False)
-    uvicorn.run("main:app", host = "0.0.0.0", port = 5050, log_level = "info", reload = True)
+    app.run(debug=True)
+    uvicorn.run("main:app", host = "192.1.2.3", port = 5050, log_level = "info", reload = True)

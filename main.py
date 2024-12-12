@@ -40,7 +40,7 @@ def download_and_redirect2(file_path):
     return redirect('/')
 
 def download_and_redirect_api(file_path, folder):
-    time.sleep(15)
+    time.sleep(10)
     os.remove(file_path)
     shutil.rmtree(folder)
     return 'success'
@@ -336,6 +336,32 @@ def process_api():
                             for word in extract_words(paragraph.text):
                                 words.add(word)
             
+            section = doc.sections[0]
+            header = section.header
+            footer = section.footer
+
+            for paragraphhd in header.paragraphs:
+                for word in extract_words(paragraphhd.text):
+                    words.add(word)
+                    
+            for tablehd in header.tables:
+                for row in tablehd.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for word in extract_words(paragraph.text):
+                                words.add(word)
+
+            for paragraphft in footer.paragraphs:
+                for word in extract_words(paragraphft.text):
+                    words.add(word)
+                    
+            for tableft in header.tables:
+                for row in tableft.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for word in extract_words(paragraph.text):
+                                words.add(word)
+
             return {"documentfield": list(words), "filename": name, "status": "success"}
         else:
             return {"status": "Credential failed"}
@@ -406,85 +432,80 @@ def submit():
 
 @app.route('/submit-api', methods=['POST'])
 def submitapi():
-    try:
-        if request.method == 'POST':
-            if request.form['key'] == 'vF6DfT5u0VeA8WEZv7RlMDwumlIHOK':
-                filename    = request.form['filename']
-                data        = json.loads(request.form['jsondata'])
-                folder      = request.form['folder']
+    if request.method == 'POST':
+        if request.form['key'] == 'vF6DfT5u0VeA8WEZv7RlMDwumlIHOK':
+            filename    = request.form['filename']
+            data        = json.loads(request.form['jsondata'])
+            folder      = request.form['folder']
 
-                file = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                doc = DocxTemplate(file)
-                newdata = {}
-                imagedata = {}
+            file = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            doc = DocxTemplate(file)
+            newdata = {}
 
-                for key, value in data.items():
-                    if "file" in key or "image" in key:
-                        newval  = value.split('❧')
-                        imagedata = {key: InlineImage(doc, os.path.join(folder, newval[0]), width=Mm(int(newval[1])), height=Mm(int(newval[2])))}
+            for key, value in data.items():
+                if "file" in key or "image" in key:
+                    newval  = value.split('❧')
+                    newdata = {key: InlineImage(doc, os.path.join(folder, newval[0]), width=Mm(int(newval[1])), height=Mm(int(newval[2])))}
 
-                for key, value in data.items():
-                    if "file" not in key or "image" not in key:
-                        newdata[key] = value
-                
-                name = f"filled_{filename.split('/')[-1]}"
-                document = doc.render(newdata)
-                document = doc.render(imagedata)
-                doc.save(r'filled_'+filename.split('/')[-1])
-                
-                documentpdf = Document()
-                documentpdf.LoadFromFile(name)
-                documentpdf.Watermark = None
-                documentpdf.SaveToFile(folder+".pdf", FileFormat.PDF)
-                documentpdf.Close()
+            for key, value in data.items():
+                if "file" in key or "image" in key:
+                    pass
+                else:
+                    newdata[key] = value
+            
+            name = f"filled_{filename.split('/')[-1]}"
+            document = doc.render(newdata)
+            doc.save(r'filled_'+filename.split('/')[-1])
+            
+            documentpdf = Document()
+            documentpdf.LoadFromFile(name)
+            documentpdf.Watermark = None
+            documentpdf.SaveToFile(folder+".pdf", FileFormat.PDF)
+            documentpdf.Close()
 
-                threading.Thread(target=download_and_redirect_api, args=(name, folder,)).start()
-                return send_file(name, as_attachment=True)
-                #return {"jsondata": data, "filename": filename, "status": "success"}
-            else:
-                return {"status": "Credential failed"}
-    except:
-        return {"status": "server error"}
-
+            threading.Thread(target=download_and_redirect_api, args=(name, folder,)).start()
+            return send_file(name, as_attachment=True)
+            #return {"jsondata": data, "filename": filename, "status": "success"}
+        else:
+            return {"status": "Credential failed"}
+    else:
+            return jsonify({"status": "Upload API GET Request Running"})
+        
 @app.route('/upload-image-api',  methods=['POST'])
 def uploadimage_api():
-    try:
-        if request.method == 'POST':
-            if request.form['key'] == 'vF6DfT5u0VeA8WEZv7RlMDwumlIHOK':
-                file = request.files.getlist('files')
-                os.makedirs(request.form['folder'], exist_ok=True) 
+    if request.method == 'POST':
+        if request.form['key'] == 'vF6DfT5u0VeA8WEZv7RlMDwumlIHOK':
+            file = request.files.getlist('files')
+            os.makedirs(request.form['folder'], exist_ok=True) 
 
-                for f in file:
-                    filename = request.form['filename']
-                    f.save(os.path.join(request.form['folder'], filename))
-                
-                return {"status": "success"}
-            else:
-                return {"status": "Credential failed"}
+            for f in file:
+                filename = request.form['filename']
+                f.save(os.path.join(request.form['folder'], filename))
+            
+            return {"status": "success"}
         else:
-            return jsonify({"status": "Upload API GET Request Running"})
-    except:
-        return {"status": "server error"}
+            return {"status": "Credential failed"}
+    else:
+        return jsonify({"status": "Upload API GET Request Running"})
+    
     
 @app.route('/download-pdf',  methods=['POST'])
 def downloadpdf():
-    try:
-        if request.method == 'POST':
-            if request.form['key'] == 'vF6DfT5u0VeA8WEZv7RlMDwumlIHOK':
-                input_pdf = request.form['pdfname']
-                output_pdf = 'filled_'+request.form['pdfname']
-                text_to_remove = "Evaluation Warning: The document was created with Spire.Doc for Python."  # Modify with the specific text you want to remove
+    if request.method == 'POST':
+        if request.form['key'] == 'vF6DfT5u0VeA8WEZv7RlMDwumlIHOK':
+            input_pdf = request.form['pdfname']
+            output_pdf = 'filled_'+request.form['pdfname']
+            text_to_remove = "Evaluation Warning: The document was created with Spire.Doc for Python."  # Modify with the specific text you want to remove
 
-                remove_text_from_pdf(input_pdf, output_pdf, text_to_remove)
+            remove_text_from_pdf(input_pdf, output_pdf, text_to_remove)
 
-                threading.Thread(target=download_and_redirect_pdf, args=(input_pdf, output_pdf,)).start()
-                return send_file(output_pdf, as_attachment=True)
-            else:
-                return {"status": "Credential failed"}
+            threading.Thread(target=download_and_redirect_pdf, args=(input_pdf, output_pdf,)).start()
+            return send_file(output_pdf, as_attachment=True)
         else:
-            return jsonify({"status": "Upload API GET Request Running"})
-    except:
-        return {"status": "server error"}
+            return {"status": "Credential failed"}
+    else:
+        return jsonify({"status": "Upload API GET Request Running"})
+    
 
 def remove_text_from_pdf(input_pdf, output_pdf, text_to_remove):
     doc = fitz.open(input_pdf)
